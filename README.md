@@ -2,7 +2,7 @@
 
 AI-powered content digest tool with multi-user support and magic link login.
 
-## Setup
+## Setup 
 
 ### 1. Supabase
 1. Go to supabase.com → New project
