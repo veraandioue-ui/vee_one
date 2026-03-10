@@ -189,6 +189,7 @@ export default function App() {
         <div className="header">
           <h1>Content Digest</h1>
           <p className="mono">Your AI-powered media curator</p>
+          <p style={{ color: "#777", marginTop: 10, fontSize: "0.85rem", lineHeight: 1.6, maxWidth: 520 }}>Add your YouTube links, channels, or podcasts — and receive an AI summary as often as you like, delivered however you prefer.</p>
         </div>
 
         <div className="tabs">
