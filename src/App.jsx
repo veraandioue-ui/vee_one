@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');`;
 
@@ -11,6 +11,12 @@ const styles = `
   .header { margin-bottom: 48px; }
   .header h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; color: #fff; }
   .header p { color: #888; margin-top: 6px; font-size: 0.9rem; }
+  .header-desc { color: #777; margin-top: 10px; font-size: 0.85rem; line-height: 1.6; max-width: 520px; }
+  .header-user { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .header-user span { font-size: 0.82rem; color: #666; }
+  .header-user strong { color: #ccc; }
+  .header-user button { background: none; border: none; color: #444; font-size: 0.75rem; cursor: pointer; text-decoration: underline; font-family: 'Syne', sans-serif; }
+  .header-user button:hover { color: #888; }
   .tabs { display: flex; gap: 4px; margin-bottom: 32px; background: #1a1a1a; border-radius: 10px; padding: 4px; }
   .tab { flex: 1; padding: 10px 8px; border: none; background: transparent; color: #666; font-family: 'Syne', sans-serif; font-size: 0.8rem; font-weight: 600; cursor: pointer; border-radius: 7px; transition: all 0.2s; letter-spacing: 0.03em; text-transform: uppercase; }
   .tab.active { background: #fff; color: #0e0e0e; }
@@ -69,10 +75,15 @@ const styles = `
   .empty-state .icon { font-size: 2rem; margin-bottom: 12px; }
   .empty-state p { font-size: 0.85rem; }
   .playlist-box { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-top: 16px; }
-  .qr-placeholder { width: 120px; height: 120px; background: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; color: #333; text-align: center; padding: 8px; margin: 12px 0; }
   .share-link { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #3d8aff; word-break: break-all; background: #111; border-radius: 8px; padding: 10px 14px; margin-top: 8px; }
   .section-divider { border: none; border-top: 1px solid #1e1e1e; margin: 20px 0; }
   .summary-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; }
+  .modal { background: #181818; border: 1px solid #2a2a2a; border-radius: 16px; padding: 36px; max-width: 400px; width: 100%; }
+  .modal h2 { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; }
+  .modal p { color: #777; font-size: 0.85rem; margin-bottom: 24px; line-height: 1.6; }
+  .modal .input { width: 100%; margin-bottom: 12px; }
+  canvas { display: block; border-radius: 8px; margin: 12px 0; }
   @media (max-width: 600px) { .options-grid { grid-template-columns: 1fr; } .sub-inputs { grid-template-columns: 1fr; } }
 `;
 
@@ -103,9 +114,96 @@ function typeIcon(type) {
   return "🔗";
 }
 
+// Simple QR code generator using canvas — no external service needed
+function QRCode({ url, size = 160 }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !url) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    canvas.width = size;
+    canvas.height = size;
+
+    // Draw white background
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size, size);
+
+    // Use the QR server API but draw it onto canvas via Image
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=000000&format=png`;
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, size, size);
+    };
+    img.onerror = () => {
+      // Fallback: draw a simple pattern indicating QR
+      ctx.fillStyle = "#f0f0f0";
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = "#333";
+      ctx.font = `${size * 0.08}px monospace`;
+      ctx.textAlign = "center";
+      ctx.fillText("QR Code", size / 2, size / 2 - 10);
+      ctx.font = `${size * 0.06}px monospace`;
+      ctx.fillStyle = "#888";
+      ctx.fillText("(copy link above)", size / 2, size / 2 + 14);
+    };
+  }, [url, size]);
+
+  return <canvas ref={canvasRef} width={size} height={size} style={{ borderRadius: 8, border: "4px solid #fff" }} />;
+}
+
+// Welcome modal for first-time users
+function WelcomeModal({ onSave }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <h2>Welcome! 👋</h2>
+        <p>Tell us your name so we can personalise your digest experience. Your info is saved locally in your browser — nothing is sent to any server.</p>
+        <input
+          className="input"
+          placeholder="Your name (e.g. Vera)"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && name.trim() && onSave(name.trim(), email.trim())}
+          autoFocus
+        />
+        <input
+          className="input"
+          placeholder="Email (optional — for digest delivery)"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && name.trim() && onSave(name.trim(), email.trim())}
+        />
+        <button
+          className="btn"
+          style={{ width: "100%", marginTop: 8 }}
+          disabled={!name.trim()}
+          onClick={() => onSave(name.trim(), email.trim())}
+        >
+          Get Started →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [userName, setUserName] = useState(() => {
+    try { return localStorage.getItem("digest_name") || ""; } catch { return ""; }
+  });
+  const [userEmail, setUserEmail] = useState(() => {
+    try { return localStorage.getItem("digest_email") || ""; } catch { return ""; }
+  });
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try { return !localStorage.getItem("digest_name"); } catch { return true; }
+  });
+
   const [activeTab, setActiveTab] = useState(0);
-  const [addMode, setAddMode] = useState("single"); // single | subscribe
+  const [addMode, setAddMode] = useState("single");
   const [links, setLinks] = useState([]);
   const [urlInput, setUrlInput] = useState("");
   const [channelInput, setChannelInput] = useState("");
@@ -115,7 +213,7 @@ export default function App() {
   const [schedule, setSchedule] = useState("weekly");
   const [deliveryTime, setDeliveryTime] = useState("08:00");
   const [deliveryMethods, setDeliveryMethods] = useState(["app"]);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(userEmail);
   const [whatsapp, setWhatsapp] = useState("");
   const [summaryStyle, setSummaryStyle] = useState("bullets");
   const [preview, setPreview] = useState("");
@@ -123,6 +221,23 @@ export default function App() {
   const [playlistTitle, setPlaylistTitle] = useState("");
   const [playlistDesc, setPlaylistDesc] = useState("");
   const [shareLink, setShareLink] = useState("");
+
+  const handleSaveUser = (name, mail) => {
+    try {
+      localStorage.setItem("digest_name", name);
+      if (mail) localStorage.setItem("digest_email", mail);
+    } catch {}
+    setUserName(name);
+    if (mail) { setUserEmail(mail); setEmail(mail); }
+    setShowWelcome(false);
+  };
+
+  const handleReset = () => {
+    try { localStorage.removeItem("digest_name"); localStorage.removeItem("digest_email"); } catch {}
+    setUserName("");
+    setUserEmail("");
+    setShowWelcome(true);
+  };
 
   const addSingleLink = () => {
     if (!urlInput.trim()) return;
@@ -185,11 +300,18 @@ export default function App() {
   return (
     <>
       <style>{styles}</style>
+      {showWelcome && <WelcomeModal onSave={handleSaveUser} />}
       <div className="app">
         <div className="header">
           <h1>Content Digest</h1>
           <p className="mono">Your AI-powered media curator</p>
-          <p style={{ color: "#777", marginTop: 10, fontSize: "0.85rem", lineHeight: 1.6, maxWidth: 520 }}>Add your YouTube links, channels, or podcasts — and receive an AI summary as often as you like, delivered however you prefer.</p>
+          <p className="header-desc">Add your YouTube links, channels, or podcasts — and receive an AI summary as often as you like, delivered however you prefer.</p>
+          {userName && (
+            <div className="header-user">
+              <span>Welcome back, <strong>{userName}</strong> 👋</span>
+              <button onClick={handleReset}>change</button>
+            </div>
+          )}
         </div>
 
         <div className="tabs">
@@ -400,15 +522,7 @@ export default function App() {
                 </button>
                 <div style={{ marginTop: 16 }}>
                   <span className="label mono">QR Code</span>
-                  <div className="qr-placeholder">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(shareLink)}`}
-                      alt="QR Code"
-                      width={120}
-                      height={120}
-                      style={{ borderRadius: 4 }}
-                    />
-                  </div>
+                  <QRCode url={shareLink} size={160} />
                 </div>
               </div>
             )}
